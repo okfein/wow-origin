@@ -14,6 +14,7 @@ export interface RawMusicAccount {
   lxSource?: unknown;
   deviceId?: unknown;
   deviceState?: unknown;
+  favoriteTrackIds?: unknown;
 }
 
 export interface MusicAccountSession {
@@ -33,6 +34,8 @@ export interface MusicAccountSession {
   favoriteAlbumIds: Set<string>;
   favoriteArtistsLoaded: boolean;
   favoriteAlbumsLoaded: boolean;
+  /** 收藏集合变更后写回账号存储；未绑定存储时为空。 */
+  persistFavoriteTracks?: () => void;
 }
 
 const qqAndroid = require('../platforms/qqmusic/util/android-login');
@@ -232,11 +235,29 @@ export function extractAuthorizationToken(value: string | undefined): string {
  * 读取并校验 v1 多账号配置。配置异常只记录日志并返回空 registry，
  * 避免账号配置问题阻止服务启动。
  */
+/** 把收藏集合写回账号存储。存储失败只告警，不影响当前请求。 */
+export function persistFavoriteTracks(
+  session: MusicAccountSession,
+  store: AccountStore
+): void {
+  try {
+    store.update(session.apiAccessKey, { favoriteTrackIds: [...session.favoriteTrackIds] });
+  } catch (error) {
+    console.warn(`[accounts] 保存账号 "${session.name}" 的收藏列表失败：${(error as Error).message}`);
+  }
+}
+
+function readFavoriteTrackIds(value: unknown): string[] {
+  return Array.isArray(value) ? [...new Set(value.map(String).filter(Boolean))] : [];
+}
+
 export function loadAccountSessions(storeInput: AccountStoreInput = process.cwd()): AccountSessionRegistry {
   const emptyRegistry: AccountSessionRegistry = { sessions: [], byAccessKey: new Map() };
   let rawAccounts: unknown;
+  let store: AccountStore;
   try {
-    rawAccounts = resolveAccountStore(storeInput).list();
+    store = resolveAccountStore(storeInput);
+    rawAccounts = store.list();
   } catch (error) {
     console.error('[accounts] 读取账号数据库失败', error);
     printTemplate();
@@ -272,7 +293,7 @@ export function loadAccountSessions(storeInput: AccountStoreInput = process.cwd(
           `[accounts] 账号 "${accountName}" 的 useLuoxue 必须是 boolean，已按 false 处理`
         );
       }
-      parsedSessions.push({
+      const session: MusicAccountSession = {
         platform,
         name: accountName,
         cookie: String(account.cookie || ''),
@@ -282,14 +303,16 @@ export function loadAccountSessions(storeInput: AccountStoreInput = process.cwd(
         lxSource: loadAccountLxSources(account.lxSource, accountName),
         ...(account.deviceId ? { deviceId: String(account.deviceId) } : {}),
         ...(account.deviceState ? { deviceState: String(account.deviceState) } : {}),
-        favoriteTrackIds: new Set<string>(),
+        favoriteTrackIds: new Set<string>(readFavoriteTrackIds(account.favoriteTrackIds)),
         userPlaylistIds: new Set<string>(),
         playlistFavorites: new PlaylistFavorites(),
         favoriteArtistIds: new Set<string>(),
         favoriteAlbumIds: new Set<string>(),
         favoriteArtistsLoaded: false,
         favoriteAlbumsLoaded: false
-      });
+      };
+      session.persistFavoriteTracks = () => persistFavoriteTracks(session, store);
+      parsedSessions.push(session);
       if (platform === 'qq' && account.deviceState && qqAndroid.deviceIdFromIdentity(String(account.deviceState))) {
         const musicid = qqMusicid(String(account.cookie || ''));
         if (musicid) qqAndroid.getAndroidLoginContext(musicid, String(account.deviceState));
@@ -451,6 +474,7 @@ export function createAccountWithCookie(
     favoriteArtistsLoaded: false,
     favoriteAlbumsLoaded: false
   };
+  session.persistFavoriteTracks = () => persistFavoriteTracks(session, store);
   registry.sessions.push(session);
   registry.byAccessKey.set(token, session);
 

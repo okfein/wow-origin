@@ -22,6 +22,7 @@ type StoredAccountRow = {
   lx_source: string | null;
   device_id: string | null;
   device_state: string | null;
+  favorite_track_ids: string | null;
 };
 
 const SCHEMA = `
@@ -36,11 +37,12 @@ const SCHEMA = `
     lx_source TEXT,
     deviceId TEXT,
     device_state TEXT,
+    favorite_track_ids TEXT,
     created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
     updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
   );
   CREATE INDEX IF NOT EXISTS accounts_access_key_idx ON accounts(api_access_key);
-  PRAGMA user_version = 2;
+  PRAGMA user_version = 3;
 `;
 
 function encode(value: unknown): string | null {
@@ -70,7 +72,8 @@ function accountValues(account: RawMusicAccount): Array<string | null> {
     encode(account.useLuoxue),
     encode(account.lxSource),
     encode(account.deviceId),
-    encode(account.deviceState)
+    encode(account.deviceState),
+    encode(account.favoriteTrackIds)
   ];
 }
 
@@ -84,7 +87,8 @@ function rowToAccount(row: StoredAccountRow): RawMusicAccount {
     useLuoxue: decode(row.use_luoxue),
     lxSource: decode(row.lx_source),
     deviceId: decode(row.device_id),
-    deviceState: decode(row.device_state)
+    deviceState: decode(row.device_state),
+    favoriteTrackIds: decode(row.favorite_track_ids)
   };
 }
 
@@ -119,10 +123,11 @@ export class SqliteAccountStore implements AccountStore {
     const columns = this.database.prepare('PRAGMA table_info(accounts)').all() as Array<{ name: string }>;
     if (!columns.some(column => column.name === 'deviceId')) this.database.exec('ALTER TABLE accounts ADD COLUMN deviceId TEXT');
     if (!columns.some(column => column.name === 'device_state')) this.database.exec('ALTER TABLE accounts ADD COLUMN device_state TEXT');
+    if (!columns.some(column => column.name === 'favorite_track_ids')) this.database.exec('ALTER TABLE accounts ADD COLUMN favorite_track_ids TEXT');
     this.insertStatement = this.database.prepare(`
       INSERT INTO accounts (
-        platform, name, cookie, api_access_key, stateless, use_luoxue, lx_source, deviceId, device_state
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+        platform, name, cookie, api_access_key, stateless, use_luoxue, lx_source, deviceId, device_state, favorite_track_ids
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     `);
     this.database.exec('CREATE TABLE IF NOT EXISTS account_migrations (name TEXT PRIMARY KEY)');
     if (!this.database.prepare('SELECT name FROM account_migrations WHERE name = ?').get('legacy-json')) {
@@ -134,7 +139,7 @@ export class SqliteAccountStore implements AccountStore {
 
   list(): RawMusicAccount[] {
     const rows = this.database.prepare(`
-      SELECT id, platform, name, cookie, api_access_key, stateless, use_luoxue, lx_source, deviceId AS device_id, device_state
+      SELECT id, platform, name, cookie, api_access_key, stateless, use_luoxue, lx_source, deviceId AS device_id, device_state, favorite_track_ids
       FROM accounts
       ORDER BY id ASC
     `).all() as unknown as StoredAccountRow[];
@@ -147,7 +152,7 @@ export class SqliteAccountStore implements AccountStore {
 
   update(apiAccessKey: string, changes: Partial<RawMusicAccount>): void {
     const row = this.database.prepare(`
-      SELECT id, platform, name, cookie, api_access_key, stateless, use_luoxue, lx_source, deviceId AS device_id, device_state
+      SELECT id, platform, name, cookie, api_access_key, stateless, use_luoxue, lx_source, deviceId AS device_id, device_state, favorite_track_ids
       FROM accounts
       WHERE api_access_key = ?
       ORDER BY id ASC
@@ -159,7 +164,7 @@ export class SqliteAccountStore implements AccountStore {
     this.database.prepare(`
       UPDATE accounts
       SET platform = ?, name = ?, cookie = ?, api_access_key = ?, stateless = ?,
-          use_luoxue = ?, lx_source = ?, deviceId = ?, device_state = ?, updated_at = CURRENT_TIMESTAMP
+          use_luoxue = ?, lx_source = ?, deviceId = ?, device_state = ?, favorite_track_ids = ?, updated_at = CURRENT_TIMESTAMP
       WHERE id = ?
     `).run(...accountValues(account), row.id);
   }

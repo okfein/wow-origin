@@ -61,6 +61,41 @@ export function createAdapter(
     account.favoriteAlbumsLoaded = true;
     return albums;
   };
+  // 收藏集合写回账号存储：Cloudflare 的 Durable Object 会休眠重启，内存集合会丢。
+  const favoriteTrack = client.favoriteTrack?.bind(client);
+  if (favoriteTrack) client.favoriteTrack = async (id, status) => {
+    const result = await favoriteTrack(id, status);
+    if (result.success) account.persistFavoriteTracks?.();
+    console.log(`[favorite-audit] ${JSON.stringify({
+      at: new Date().toISOString(),
+      platform: account.platform,
+      account: account.name,
+      action: status ? 'like' : 'unlike',
+      trackId: id,
+      success: result.success,
+      total: account.favoriteTrackIds.size
+    })}`);
+    return result;
+  };
+  const userFavoriteTracks = client.userFavoriteTracks?.bind(client);
+  if (userFavoriteTracks) client.userFavoriteTracks = async () => {
+    const before = account.favoriteTrackIds.size;
+    const tracks = await userFavoriteTracks();
+    const after = account.favoriteTrackIds.size;
+    // 只在上游返回非空结果时写回，避免残缺响应把已有收藏覆盖成空。
+    if (tracks.length > 0) account.persistFavoriteTracks?.();
+    console.log(`[favorite-audit] ${JSON.stringify({
+      at: new Date().toISOString(),
+      platform: account.platform,
+      account: account.name,
+      action: 'read',
+      read: tracks.length,
+      previous: before,
+      total: after,
+      dropped: before > after ? before - after : 0
+    })}`);
+    return tracks;
+  };
   if (client instanceof YTMusicClient || account.useLuoxue === false || !lxTrackUrlResolver) return client;
 
   const defaultGetTrackUrl = client.getTrackUrlForQuality.bind(client);
