@@ -53,8 +53,9 @@ describe('v1 router auth', () => {
     })
   })
 
-  test('未预加载时，详情请求先初始化收藏 ID 并在后续请求复用', async () => {
+  test('未预加载时，首个请求补齐收藏歌曲并初始化收藏 ID，后续请求复用', async () => {
     const callModule = jest.fn((route) => {
+      if (route === 'user/playlist') return Promise.resolve({ code: 200, playlist: [], more: false })
       if (route === 'artist/sublist') return Promise.resolve({ code: 200, data: [{ id: 'artist-mid', name: '艺人' }], more: false })
       if (route === 'artist/detail') return Promise.resolve({ code: 200, data: { artist: { id: 'artist-mid', name: '艺人' } } })
       throw new Error(`unexpected route: ${route}`)
@@ -67,6 +68,7 @@ describe('v1 router auth', () => {
 
     expect(first.body.data.favorite).toBe(true)
     expect(second.body.data.favorite).toBe(true)
-    expect(callModule.mock.calls.map(([route]) => route)).toEqual(['artist/sublist', 'artist/detail', 'artist/detail'])
+    // 首个请求在读取艺人前补齐收藏歌曲（user/playlist），第二个请求不再重复拉取。
+    expect(callModule.mock.calls.map(([route]) => route)).toEqual(['user/playlist', 'artist/sublist', 'artist/detail', 'artist/detail'])
   })
 })

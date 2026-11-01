@@ -140,6 +140,24 @@ export function createWowContextResolver(
     const host = header('host');
     const origin = host && /^[a-zA-Z0-9.:-]+$/.test(host) ? `${protocol}://${host}` : undefined;
     const adapter = createAdapter(account, lxTrackUrlResolver, origin);
+    // Cloudflare 关闭了启动预热，冷启动后收藏集合是空的，爱心会全部显示未收藏。
+    // 这里按需补一次，成功一次后本进程不再重复请求。
+    if (!account.favoriteTracksLoaded && !account.favoriteTracksLoading
+        && Date.now() >= (account.favoriteTracksRetryAt || 0) && account.cookie.trim()) {
+      account.favoriteTracksLoading = (async () => {
+        try {
+          await adapter.userFavoriteTracks();
+          account.favoriteTracksLoaded = true;
+          account.favoriteTracksRetryAt = undefined;
+        } catch (error) {
+          account.favoriteTracksRetryAt = Date.now() + 5 * 60 * 1000;
+          console.warn(`[favorites] ${account.platform} 账号 "${account.name}" 读取收藏失败：${(error as Error).message}`);
+        } finally {
+          account.favoriteTracksLoading = undefined;
+        }
+      })();
+      await account.favoriteTracksLoading;
+    }
     const needed = collectionStatusNeeded(request?.path || '');
     if (needed.artists && !account.favoriteArtistsLoaded) {
       try {

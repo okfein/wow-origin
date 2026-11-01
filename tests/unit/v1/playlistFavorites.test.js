@@ -50,7 +50,8 @@ describe('account playlist favorites', () => {
     };
 
     await assertPublicFavorites(false);
-    expect(callModule.mock.calls.some(([route]) => route === 'user/playlist')).toBe(false);
+    // 冷启动时首个请求会补拉一次收藏歌曲（本次上游失败），其后按 5 分钟退避不重复请求。
+    expect(callModule.mock.calls.filter(([route]) => route === 'user/playlist')).toHaveLength(1);
     failList = false;
     await get('user/playlist/list').expect(200);
     await assertPublicFavorites(true);
@@ -61,7 +62,8 @@ describe('account playlist favorites', () => {
     saved = false;
     await get('user/playlist/list').expect(200);
     await assertPublicFavorites(false);
-    expect(callModule.mock.calls.filter(([route]) => route === 'user/playlist')).toHaveLength(3);
+    // 1 次冷启动补拉 + 3 次显式刷新的「我的歌单」请求。
+    expect(callModule.mock.calls.filter(([route]) => route === 'user/playlist')).toHaveLength(4);
   });
 
   test('full snapshots replace saved IDs, preserve own false, and remain account isolated', () => {

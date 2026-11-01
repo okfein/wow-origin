@@ -292,6 +292,7 @@ export function createLoginRouter({
       result.session.favoriteAlbumIds.clear();
       result.session.favoriteArtistsLoaded = false;
       result.session.favoriteAlbumsLoaded = false;
+      result.session.favoriteTracksLoaded = false;
     }
     await preloadSessionFavorites(result.session);
     if (registry.byAccessKey.get(apiAccessKey) !== result.session) throw new BadRequestError('账号已删除');

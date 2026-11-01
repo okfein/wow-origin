@@ -34,6 +34,12 @@ export interface MusicAccountSession {
   favoriteAlbumIds: Set<string>;
   favoriteArtistsLoaded: boolean;
   favoriteAlbumsLoaded: boolean;
+  /** 本进程是否已从上游拉取过收藏歌曲；Cloudflare 冷启动时为 false。 */
+  favoriteTracksLoaded: boolean;
+  /** 同一时刻只允许一次收藏拉取，避免并发请求重复打上游。 */
+  favoriteTracksLoading?: Promise<void>;
+  /** 拉取失败后的重试时间戳；期间直接跳过，避免每次请求都打上游。 */
+  favoriteTracksRetryAt?: number;
   /** 收藏集合变更后写回账号存储；未绑定存储时为空。 */
   persistFavoriteTracks?: () => void;
 }
@@ -309,7 +315,8 @@ export function loadAccountSessions(storeInput: AccountStoreInput = process.cwd(
         favoriteArtistIds: new Set<string>(),
         favoriteAlbumIds: new Set<string>(),
         favoriteArtistsLoaded: false,
-        favoriteAlbumsLoaded: false
+        favoriteAlbumsLoaded: false,
+        favoriteTracksLoaded: account.favoriteTrackIds !== undefined
       };
       session.persistFavoriteTracks = () => persistFavoriteTracks(session, store);
       parsedSessions.push(session);
@@ -472,7 +479,8 @@ export function createAccountWithCookie(
     favoriteArtistIds: new Set<string>(),
     favoriteAlbumIds: new Set<string>(),
     favoriteArtistsLoaded: false,
-    favoriteAlbumsLoaded: false
+    favoriteAlbumsLoaded: false,
+    favoriteTracksLoaded: false
   };
   session.persistFavoriteTracks = () => persistFavoriteTracks(session, store);
   registry.sessions.push(session);
@@ -542,4 +550,5 @@ export function deleteAccount(apiAccessKey: string, registry: AccountSessionRegi
   session.cookie = ''; session.deviceId = undefined; session.deviceState = undefined;
   session.playlistFavorites.clear();
   session.lxSource = []; session.favoriteArtistsLoaded = false; session.favoriteAlbumsLoaded = false;
+  session.favoriteTracksLoaded = false;
 }
