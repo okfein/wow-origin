@@ -375,6 +375,38 @@ describe('Wow adapter', () => {
     await expect(resolver({ authorization: undefined, request: {} })).resolves.toBeNull()
   })
 
+  test('冷启动补拉期间的并发请求会等待补拉完成，不会读到空收藏集合', async () => {
+    const account = {
+      platform: 'netease', name: '网易云', cookie: 'MUSIC_U=cookie', apiAccessKey: 'token-1',
+      stateless: false, favoriteTrackIds: new Set(), userPlaylistIds: new Set(),
+      favoriteArtistIds: new Set(), favoriteAlbumIds: new Set(),
+      favoriteArtistsLoaded: false, favoriteAlbumsLoaded: false, favoriteTracksLoaded: false
+    }
+    let release
+    const gate = new Promise((resolve) => { release = resolve })
+    const trackLoad = jest.spyOn(NeteaseClient.prototype, 'userFavoriteTracks').mockImplementation(async function () {
+      await gate
+      this.favoriteTrackSet.add('song-1')
+      return [{ id: 'song-1' }]
+    })
+    const resolver = createWowContextResolver({ sessions: [account], byAccessKey: new Map([['token-1', account]]) })
+    const input = { authorization: 'Bearer token-1', request: { path: '/v1/playlist/detail' } }
+
+    const first = resolver(input)
+    await new Promise((resolve) => setTimeout(resolve, 10))
+    // 补拉仍在进行时到达的第二个请求，必须等同一份补拉结果。
+    let secondDone = false
+    const second = resolver(input).then((context) => { secondDone = true; return context })
+    await new Promise((resolve) => setTimeout(resolve, 10))
+    expect(secondDone).toBe(false)
+
+    release()
+    const [, secondContext] = await Promise.all([first, second])
+
+    expect(trackLoad).toHaveBeenCalledTimes(1)
+    expect(secondContext.adapter.favoriteTrackSet.has('song-1')).toBe(true)
+  })
+
   test('未预加载的账号首次打开专辑详情时只加载一次艺人和专辑收藏', async () => {
     const account = {
       platform: 'qq', name: 'QQ', cookie: 'uin=o123; qm_keyst=key', apiAccessKey: 'token-1',

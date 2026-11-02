@@ -158,8 +158,10 @@ export function createWowContextResolver(
           account.favoriteTracksLoading = undefined;
         }
       })();
-      await account.favoriteTracksLoading;
     }
+    // 补拉进行中到达的并发请求也必须等它结束，否则会拿空集合去映射 favorite
+    // 字段，把整批歌曲返回成未收藏（冷启动打开歌单时爱心全空即由此产生）。
+    if (account.favoriteTracksLoading) await account.favoriteTracksLoading;
     const needed = collectionStatusNeeded(request?.path || '');
     if (needed.artists && !account.favoriteArtistsLoaded) {
       try {
