@@ -84,12 +84,14 @@ export function createAdapter(
     const after = account.favoriteTrackIds.size;
     // 只在上游返回非空结果时写回，避免残缺响应把已有收藏覆盖成空。
     if (tracks.length > 0) account.persistFavoriteTracks?.();
+    // visible = 上游 tracks 返回的可见曲目数；total = 权威收藏 ID 数。
+    // 两者长期不相等说明存在隐藏/受限曲目；total 变小才是真的掉收藏。
     console.log(`[favorite-audit] ${JSON.stringify({
       at: new Date().toISOString(),
       platform: account.platform,
       account: account.name,
       action: 'read',
-      read: tracks.length,
+      visible: tracks.length,
       previous: before,
       total: after,
       dropped: before > after ? before - after : 0

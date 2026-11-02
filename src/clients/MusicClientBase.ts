@@ -105,6 +105,16 @@ export abstract class MusicClientBase implements WowAdapter {
     this.favoriteTrackSet.clear();
   }
 
+  /** 用一次快照整体替换收藏集合，避免 clear 后逐条 add 期间被并发请求读到空集合。 */
+  protected replaceFavoriteTracks(ids: Iterable<string>): void {
+    const next = new Set<string>();
+    for (const id of ids) {
+      if (id) next.add(String(id));
+    }
+    this.favoriteTrackSet.clear();
+    next.forEach((id) => this.favoriteTrackSet.add(id));
+  }
+
   protected replaceUserPlaylists(playlists: Playlist[]): void {
     this.playlistFavorites.replace(playlists);
     this.userPlaylistSet.clear();

@@ -288,6 +288,10 @@ export class NeteaseClient extends MusicClientBase {
     return albums;
   }
 
+  /**
+   * 收藏集合以 playlist_detail 的 trackIds 为准：它是全量 ID 列表，
+   * 而 tracks 只包含当前账号可见的歌曲，会漏掉部分已收藏曲目。
+   */
   async userFavoriteTracks(): Promise<Track[]> {
     const playlists = await this.getUserPlaylist();
     const favoritePlaylist = playlists.find((playlist) => /.+喜欢的音乐$/.test(playlist.name));
@@ -295,10 +299,16 @@ export class NeteaseClient extends MusicClientBase {
       this.clearFavoriteTracks();
       return [];
     }
-    const detail = await this.getPlaylistDetail(favoritePlaylist.id);
-    const tracks = detail.tracks || [];
-    this.clearFavoriteTracks();
-    tracks.forEach((track: Track) => this.addFavoriteTrack(track.id));
+    const raw = await this.call('playlist_detail', { id: favoritePlaylist.id, n: 1000 });
+    const playlist = raw.playlist;
+    if (!playlist) {
+      throw new NotFoundError('Playlist not found');
+    }
+    const tracks = (playlist.tracks || []).slice(0, 1000).map((item: any) => mapTrack(item));
+    const trackIds = Array.isArray(playlist.trackIds)
+      ? playlist.trackIds.map((item: any) => String(item?.id ?? item)).filter(Boolean)
+      : [];
+    this.replaceFavoriteTracks(trackIds.length ? trackIds : tracks.map((track: Track) => track.id));
     return this.withFavoriteTracks(tracks);
   }
 

@@ -305,8 +305,8 @@ export class QQClient extends MusicClientBase {
     }
     const detail = await this.getPlaylistDetail(favoritePlaylist.id);
     const tracks = detail.tracks || [];
-    this.clearFavoriteTracks();
-    tracks.forEach((track: Track) => this.addFavoriteTrack(track.id));
+    // 整体快照替换，避免 clear 与逐条 add 之间被并发请求读到空集合。
+    this.replaceFavoriteTracks(tracks.map((track: Track) => track.id));
     return this.withFavoriteTracks(tracks);
   }
 
