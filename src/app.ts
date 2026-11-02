@@ -251,6 +251,12 @@ class MultiPlatformServer {
         else res.destroy(error as Error);
       }
     });
+    // 收藏等写操作后，客户端可能带 If-None-Match 命中旧 ETag 拿到 304，从而继续
+    // 使用收藏之前的响应体，导致爱心状态不刷新。v1 全部接口禁用缓存。
+    this.app!.use('/v1', (_req: Request, res: Response, next: NextFunction) => {
+      res.set('Cache-Control', 'no-store');
+      next();
+    });
     this.app!.use(createWowRouter({
       resolveContext: createWowContextResolver(this.accountSessions, this.lxSourceManager),
       onError: (error, request) => this.logger.error('Wow v1 request failed', error, { url: request.url })
